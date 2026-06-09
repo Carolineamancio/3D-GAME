@@ -1,0 +1,554 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+<title>Corrida 3D</title>
+
+<style>
+body{
+    margin:0;
+    overflow:hidden;
+    font-family:Arial,sans-serif;
+}
+
+#hud{
+    position:absolute;
+    top:10px;
+    left:10px;
+    color:white;
+    z-index:100;
+    font-size:24px;
+    text-shadow:2px 2px 4px black;
+}
+
+#score{
+    margin-bottom:10px;
+}
+</style>
+</head>
+<body>
+
+<div id="hud">
+    <div id="score">Pontos: 0</div>
+    <div id="timer">Tempo: 30</div>
+</div>
+
+<script type="module">
+
+import * as THREE from "https://unpkg.com/three@0.160.0/build/three.module.js";
+
+//////////////////////////////////////////////////
+// CENA
+//////////////////////////////////////////////////
+
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0x87ceeb);
+
+const camera = new THREE.PerspectiveCamera(
+75,
+window.innerWidth/window.innerHeight,
+0.1,
+1000
+);
+
+const renderer = new THREE.WebGLRenderer({
+antialias:true
+});
+
+renderer.setSize(
+window.innerWidth,
+window.innerHeight
+);
+
+renderer.shadowMap.enabled = true;
+
+document.body.appendChild(
+renderer.domElement
+);
+
+//////////////////////////////////////////////////
+// LUZES
+//////////////////////////////////////////////////
+
+const ambient = new THREE.AmbientLight(
+0xffffff,
+1
+);
+
+scene.add(ambient);
+
+const sun = new THREE.DirectionalLight(
+0xffffff,
+2
+);
+
+sun.position.set(
+20,
+30,
+20
+);
+
+scene.add(sun);
+
+//////////////////////////////////////////////////
+// ESTRADA
+//////////////////////////////////////////////////
+
+const road = new THREE.Mesh(
+new THREE.BoxGeometry(12,0.1,1000),
+new THREE.MeshStandardMaterial({
+color:0x444444
+})
+);
+
+road.position.z = -500;
+
+scene.add(road);
+
+for(let i=0;i<60;i++){
+
+const stripe = new THREE.Mesh(
+new THREE.BoxGeometry(
+0.4,
+0.05,
+6
+),
+new THREE.MeshStandardMaterial({
+color:0xffffff
+})
+);
+
+stripe.position.z = -i*15;
+stripe.position.y = 0.06;
+
+scene.add(stripe);
+}
+
+//////////////////////////////////////////////////
+// GRAMA
+//////////////////////////////////////////////////
+
+const grassLeft = new THREE.Mesh(
+new THREE.BoxGeometry(
+200,
+0.05,
+1000
+),
+new THREE.MeshStandardMaterial({
+color:0x2e8b57
+})
+);
+
+grassLeft.position.x = -106;
+grassLeft.position.z = -500;
+
+scene.add(grassLeft);
+
+const grassRight = grassLeft.clone();
+grassRight.position.x = 106;
+
+scene.add(grassRight);
+
+//////////////////////////////////////////////////
+// CARRO
+//////////////////////////////////////////////////
+
+const car = new THREE.Group();
+
+const body = new THREE.Mesh(
+new THREE.BoxGeometry(
+1.6,
+0.8,
+3
+),
+new THREE.MeshStandardMaterial({
+color:0xff0000
+})
+);
+
+body.position.y = 0.8;
+
+car.add(body);
+
+const cabin = new THREE.Mesh(
+new THREE.BoxGeometry(
+1.2,
+0.6,
+1.5
+),
+new THREE.MeshStandardMaterial({
+color:0x222222
+})
+);
+
+cabin.position.y = 1.4;
+
+car.add(cabin);
+
+car.position.set(
+0,
+0,
+20
+);
+
+scene.add(car);
+
+//////////////////////////////////////////////////
+// CÂMERA
+//////////////////////////////////////////////////
+
+camera.position.set(
+0,
+5,
+30
+);
+
+//////////////////////////////////////////////////
+// CONTROLES
+//////////////////////////////////////////////////
+
+const keys = {
+  a: false,
+  d: false
+};
+
+window.addEventListener("keydown", (e) => {
+
+  if (
+    e.code === "KeyA" ||
+    e.code === "ArrowLeft"
+  ) {
+    keys.a = true;
+  }
+
+  if (
+    e.code === "KeyD" ||
+    e.code === "ArrowRight"
+  ) {
+    keys.d = true;
+  }
+});
+
+window.addEventListener("keyup", (e) => {
+
+  if (
+    e.code === "KeyA" ||
+    e.code === "ArrowLeft"
+  ) {
+    keys.a = false;
+  }
+
+  if (
+    e.code === "KeyD" ||
+    e.code === "ArrowRight"
+  ) {
+    keys.d = false;
+  }
+});
+
+//////////////////////////////////////////////////
+// PEDRAS
+//////////////////////////////////////////////////
+
+const rocks = [];
+
+function createRock(z){
+
+const rock = new THREE.Mesh(
+new THREE.DodecahedronGeometry(
+1,
+0
+),
+new THREE.MeshStandardMaterial({
+color:0x808080
+})
+);
+
+rock.position.set(
+[-4,0,4][Math.floor(Math.random()*3)],
+1,
+z
+);
+
+scene.add(rock);
+
+rocks.push(rock);
+}
+
+for(let i=0;i<25;i++){
+
+createRock(
+-40 - i*20
+);
+}
+
+//////////////////////////////////////////////////
+// LINHA DE CHEGADA
+//////////////////////////////////////////////////
+
+const finishLine = new THREE.Group();
+
+const finishBase = new THREE.Mesh(
+new THREE.BoxGeometry(
+12,
+0.1,
+3
+),
+new THREE.MeshStandardMaterial({
+color:0xffffff
+})
+);
+
+finishLine.add(finishBase);
+
+finishLine.visible = false;
+
+scene.add(finishLine);
+
+//////////////////////////////////////////////////
+// ESTADO
+//////////////////////////////////////////////////
+
+let score = 0;
+let gameOver = false;
+let raceFinished = false;
+
+const raceTime = 30000;
+const startTime = Date.now();
+
+//////////////////////////////////////////////////
+// FUNÇÃO GAME OVER
+//////////////////////////////////////////////////
+
+function lose(){
+
+if(gameOver) return;
+
+gameOver = true;
+
+setTimeout(()=>{
+
+alert(
+"💥 Game Over!\nPontuação: "
++ score
+);
+
+location.reload();
+
+},100);
+}
+
+//////////////////////////////////////////////////
+// FUNÇÃO VITÓRIA
+//////////////////////////////////////////////////
+
+function win(){
+
+if(gameOver) return;
+
+gameOver = true;
+
+setTimeout(()=>{
+
+alert(
+"🏁 Você venceu!\nPontuação: "
++ score
+);
+
+location.reload();
+
+},100);
+}
+
+//////////////////////////////////////////////////
+// LOOP
+//////////////////////////////////////////////////
+
+function animate(){
+
+requestAnimationFrame(
+animate
+);
+
+if(gameOver){
+
+renderer.render(
+scene,
+camera
+);
+
+return;
+}
+
+////////////////////////////////////
+// TEMPO
+////////////////////////////////////
+
+const elapsed =
+Date.now() - startTime;
+
+const remaining =
+Math.max(
+0,
+Math.ceil(
+(raceTime-elapsed)/1000
+)
+);
+
+document.getElementById(
+"timer"
+).innerText =
+"Tempo: " + remaining;
+
+////////////////////////////////////
+// MOVIMENTO
+////////////////////////////////////
+
+car.position.z -= 0.45;
+
+if (keys.a) {
+  car.position.x -= 0.18;
+}
+
+if (keys.d) {
+  car.position.x += 0.18;
+}
+
+car.position.x =
+Math.max(
+  -5,
+  Math.min(
+    5,
+    car.position.x
+  )
+);
+
+////////////////////////////////////
+// CHEGADA
+////////////////////////////////////
+
+if(
+elapsed >= raceTime &&
+!raceFinished
+){
+
+raceFinished = true;
+
+finishLine.visible = true;
+
+finishLine.position.z =
+car.position.z - 120;
+}
+
+if(
+raceFinished &&
+car.position.z <= finishLine.position.z
+){
+
+win();
+}
+
+////////////////////////////////////
+// PEDRAS
+////////////////////////////////////
+
+rocks.forEach((rock)=>{
+
+if(
+rock.position.z >
+car.position.z + 30
+){
+
+rock.position.z =
+car.position.z - 500;
+
+rock.position.x =
+[-4,0,4][
+Math.floor(
+Math.random()*3
+)
+];
+
+score++;
+
+document.getElementById(
+"score"
+).innerText =
+"Pontos: " + score;
+}
+
+const dx =
+Math.abs(
+car.position.x -
+rock.position.x
+);
+
+const dz =
+Math.abs(
+car.position.z -
+rock.position.z
+);
+
+if(
+dx < 1.4 &&
+dz < 2
+){
+
+lose();
+}
+});
+
+////////////////////////////////////
+// CÂMERA
+////////////////////////////////////
+
+camera.position.x +=
+(
+car.position.x -
+camera.position.x
+) * 0.08;
+
+camera.position.z =
+car.position.z + 10;
+
+camera.lookAt(
+car.position.x,
+1,
+car.position.z - 20
+);
+
+renderer.render(
+scene,
+camera
+);
+}
+
+animate();
+
+//////////////////////////////////////////////////
+// RESPONSIVO
+//////////////////////////////////////////////////
+
+window.addEventListener(
+"resize",
+()=>{
+
+camera.aspect =
+window.innerWidth /
+window.innerHeight;
+
+camera.updateProjectionMatrix();
+
+renderer.setSize(
+window.innerWidth,
+window.innerHeight
+);
+}
+);
+
+</script>
+
+</body>
+</html>
